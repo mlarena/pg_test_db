@@ -30,7 +30,7 @@
 2. Настройте параметры подключения в скрипте:
    ```python
    DB_HOST = 'localhost'
-   DB_NAME = 'test_db' 
+   DB_NAME = 'pg_test_db' 
    DB_USER = 'postgres'
    DB_PASSWORD = '12345678'
    ```
