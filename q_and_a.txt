@@ -2,7 +2,16 @@
 Описание: Получить данные одного члена клуба по ID.
 Запрос: SELECT * FROM club_members WHERE id = 500000;
 EXPLAIN: EXPLAIN (ANALYZE, VERBOSE, COSTS) SELECT * FROM club_members WHERE id = 500000;
-(Ожидаемый план: Seq Scan или Index Scan на PK; время ~0.01с).
+Ожидаемый план: 
+Seq Scan или Index Scan на PK; время ~0.01с.
+Фактический план:
+Index Scan using club_members_pkey on public.club_members  (cost=0.42..8.44 rows=1 width=473) (actual time=1.978..1.982 rows=1 loops=1)
+  Output: id, member_number, region, surname, first_name, patronymic, organization_name, club_code, club_name, man_hours, number_of_clubs, number_of_hours, inn, enrollment_date, unload_date, additional_field1, additional_field2, additional_field3, additional_field4
+  Index Cond: (club_members.id = 500000)
+Query Identifier: 3035641612670363271
+Planning Time: 0.828 ms
+Execution Time: 2.109 ms
+
 Анализ: Запрос оптимален благодаря PK-индексу. Дополнительный индекс не нужен. Для ускорения используйте LIMIT, если не все поля требуются.
 
 Задание 2: SELECT с фильтром по региону (без индекса)
