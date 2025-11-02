@@ -1,0 +1,7 @@
+python3 -m venv venv
+Ensure your virtual environment is activated: venv\Scripts\activate (Windows) or source venv/bin/activate (Unix).
+Reinstall dependencies if necessary: pip install -r requirements.txt.
+
+Test the login functionality with username: admin and password: admin123.
+pip freeze > requirements.txt
+

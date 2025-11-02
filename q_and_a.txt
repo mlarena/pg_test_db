@@ -1,0 +1,122 @@
+Задание 1: Простой SELECT с фильтром по ID (базовый план)
+Описание: Получить данные одного члена клуба по ID.
+Запрос: SELECT * FROM club_members WHERE id = 500000;
+EXPLAIN: EXPLAIN (ANALYZE, VERBOSE, COSTS) SELECT * FROM club_members WHERE id = 500000;
+(Ожидаемый план: Seq Scan или Index Scan на PK; время ~0.01с).
+Анализ: Запрос оптимален благодаря PK-индексу. Дополнительный индекс не нужен. Для ускорения используйте LIMIT, если не все поля требуются.
+
+Задание 2: SELECT с фильтром по региону (без индекса)
+Описание: Найти всех членов из Москвы.
+Запрос: SELECT COUNT(*) FROM club_members WHERE region = 'Москва';
+EXPLAIN: EXPLAIN (ANALYZE, BUFFERS, TIMING) SELECT COUNT(*) FROM club_members WHERE region = 'Москва';
+(Seq Scan, высокое время ~1-2с из-за 1M записей).
+Анализ: Организуйте с подзапросом для подсчёта. Нужен индекс: CREATE INDEX idx_region ON club_members(region); для Index Scan.
+
+Задание 3: JOIN с таблицей regions
+Описание: Получить имена регионов для членов.
+Запрос: SELECT cm.surname, r.region_name FROM club_members cm JOIN regions r ON cm.region = r.region_name LIMIT 10;
+EXPLAIN: EXPLAIN (VERBOSE, COSTS, GENERIC_PLAN) SELECT ...;
+(Ожидаемый: Nested Loop Join).
+Анализ: Используйте INNER JOIN для фильтрации. Индекс на club_members.region ускорит JOIN.
+Задание 4: GROUP BY по числовому полю
+Описание: Подсчёт членов по количеству клубов.
+Запрос: SELECT number_of_clubs, COUNT(*) FROM club_members GROUP BY number_of_clubs;
+EXPLAIN: EXPLAIN (ANALYZE, SUMMARY, MEMORY) SELECT ...;
+(HashAggregate, память ~10MB).
+Анализ: Добавьте ORDER BY для сортировки. Индекс на number_of_clubs поможет при GROUP BY.
+Задание 5: Фильтр по дате (диапазон)
+Описание: Члены, записанные после 2024-01-01.
+Запрос: SELECT * FROM club_members WHERE enrollment_date > '2024-01-01';
+EXPLAIN: EXPLAIN (ANALYZE, WAL, TIMING) SELECT ...;
+(Seq Scan, время ~0.5с).
+Анализ: Преобразуйте в BETWEEN для диапазонов. Нужен индекс: CREATE INDEX idx_enroll_date ON club_members(enrollment_date);.
+Задание 6: LIKE на строковом поле
+Описание: Фамилии на "Ив".
+Запрос: SELECT surname FROM club_members WHERE surname LIKE 'Ив%';
+EXPLAIN: EXPLAIN (COSTS, SETTINGS, FORMAT JSON) SELECT ...;
+(Seq Scan в JSON-формате).
+Анализ: Используйте ILIKE для регистронезависимости. Индекс: CREATE INDEX idx_surname_trgm ON club_members USING GIN (surname gin_trgm_ops); (для триграмм).
+Задание 7: Подзапрос с EXISTS
+Описание: Члены с активными клубами (unload_date > now).
+Запрос: SELECT * FROM club_members cm WHERE EXISTS (SELECT 1 FROM club_members cm2 WHERE cm2.id = cm.id AND cm2.unload_date > CURRENT_DATE);
+EXPLAIN: EXPLAIN (VERBOSE, SERIALIZE TEXT) SELECT ...;
+(Seq Scan в подзапросе).
+Анализ: Упростите до прямого WHERE. Индекс на unload_date.
+Задание 8: Множественный JOIN
+Описание: Полная информация о члене с клубом и организацией.
+Запрос: SELECT cm.*, c.club_name, o.org_name FROM club_members cm JOIN clubs c ON cm.club_code = c.club_code JOIN organizations o ON cm.inn = o.org_inn WHERE cm.id = 1;
+EXPLAIN: EXPLAIN (ANALYZE, BUFFERS, FORMAT XML) SELECT ...;
+(Nested Loop, буферы в XML).
+Анализ: Используйте алиасы последовательно. Индексы на club_code и inn.
+Задание 9: ORDER BY без LIMIT
+Описание: Сортировка по часам (медленно на 1M).
+Запрос: SELECT * FROM club_members ORDER BY number_of_hours DESC;
+EXPLAIN: EXPLAIN (COSTS, TIMING, SUMMARY) SELECT ...;
+(Sort, время ~5с).
+Анализ: Добавьте LIMIT 100. Индекс: CREATE INDEX idx_hours ON club_members(number_of_hours DESC);.
+Задание 10: Агрегация с HAVING
+Описание: Регионы с >1000 членами.
+Запрос: SELECT region, COUNT(*) FROM club_members GROUP BY region HAVING COUNT(*) > 1000;
+EXPLAIN: EXPLAIN (ANALYZE, MEMORY, FORMAT YAML) SELECT ...;
+(HashAggregate в YAML).
+Анализ: Фильтруйте в WHERE сначала. Индекс на region.
+Задание 11: UNION двух запросов
+Описание: Члены из Москвы или СПб.
+Запрос: SELECT * FROM club_members WHERE region = 'Москва' UNION SELECT * FROM club_members WHERE region = 'Санкт-Петербург';
+EXPLAIN: EXPLAIN (VERBOSE, GENERIC_PLAN) SELECT ...;
+(Append, generic план).
+Анализ: Замените на OR в WHERE. Индекс на region.
+Задание 12: Фильтр по BOOLEAN
+Описание: Члены с additional_field3 = TRUE.
+Запрос: SELECT COUNT(*) FROM club_members WHERE additional_field3 = TRUE;
+EXPLAIN: EXPLAIN (ANALYZE, SETTINGS) SELECT ...;
+(Seq Scan).
+Анализ: Оптимально как есть. Индекс: CREATE INDEX idx_add3 ON club_members(additional_field3); (partial, если нужно).
+Задание 13: DISTINCT на множестве полей
+Описание: Уникальные комбинации ФИО.
+Запрос: SELECT DISTINCT surname, first_name FROM club_members;
+EXPLAIN: EXPLAIN (COSTS, BUFFERS) SELECT ...;
+(Hash).
+Анализ: Используйте GROUP BY вместо DISTINCT. Индекс на (surname, first_name).
+Задание 14: Вложенный запрос с корреляцией
+Описание: Максимальные часы по региону.
+Запрос: SELECT region, (SELECT MAX(number_of_hours) FROM club_members cm2 WHERE cm2.region = cm.region) FROM club_members cm GROUP BY region;
+EXPLAIN: EXPLAIN (ANALYZE, WAL) SELECT ...;
+(Seq Scan в подзапросе).
+Анализ: Перепишите как JOIN с оконной функцией. Индекс на region + number_of_hours.
+Задание 15: Фильтр по TIMESTAMP
+Описание: Записи после определённого времени.
+Запрос: SELECT * FROM club_members WHERE additional_field4 > '2025-01-01 00:00:00';
+EXPLAIN: EXPLAIN (TIMING, SUMMARY, FORMAT TEXT) SELECT ...;
+(Seq Scan).
+Анализ: Используйте AT TIME ZONE если нужно. Индекс на additional_field4.
+Задание 16: LEFT JOIN с NULL-фильтром
+Описание: Члены без организации.
+Запрос: SELECT * FROM club_members cm LEFT JOIN organizations o ON cm.inn = o.org_inn WHERE o.id IS NULL;
+EXPLAIN: EXPLAIN (VERBOSE, SERIALIZE BINARY) SELECT ...;
+(Anti-join).
+Анализ: Оптимально. Индекс на inn.
+Задание 17: Агрегация по дате
+Описание: Количество записей по месяцам.
+Запрос: SELECT DATE_TRUNC('month', enrollment_date) AS month, COUNT(*) FROM club_members GROUP BY month;
+EXPLAIN: EXPLAIN (ANALYZE, MEMORY) SELECT ...;
+(Sort/Group).
+Анализ: Добавьте ORDER BY month. Индекс на enrollment_date.
+Задание 18: LIKE с % в конце
+Описание: Фамилии заканчивающиеся на "ов".
+Запрос: SELECT * FROM club_members WHERE surname LIKE '%ов';
+EXPLAIN: EXPLAIN (COSTS, FORMAT JSON) SELECT ...;
+(Seq Scan, плохо для trailing %).
+Анализ: Используйте реверс строки для индекса. Индекс: GIN с триграммами на surname.
+Задание 19: CASE в SELECT
+Описание: Категоризация по часам.
+Запрос: SELECT surname, CASE WHEN number_of_hours > 200 THEN 'Много' ELSE 'Мало' END AS category FROM club_members;
+EXPLAIN: EXPLAIN (ANALYZE, BUFFERS) SELECT ...;
+(Seq Scan).
+Анализ: Выносите CASE в WHERE для фильтра. Индекс на number_of_hours.
+Задание 20: Полный план с сериализацией
+Описание: Комплексный отчёт: средние часы по региону и клубу.
+Запрос: SELECT r.region_name, c.club_name, AVG(cm.number_of_hours) FROM club_members cm JOIN regions r ON cm.region = r.region_name JOIN clubs c ON cm.club_code = c.club_code GROUP BY r.region_name, c.club_name;
+EXPLAIN: EXPLAIN (ANALYZE VERBOSE COSTS BUFFERS TIMING SUMMARY MEMORY SERIALIZE TEXT) SELECT ...;
+(Full план с метриками).
+Анализ: Используйте композитный индекс: CREATE INDEX idx_region_club_hours ON club_members(region, club_code, number_of_hours); для ускорения GROUP BY и JOIN.
